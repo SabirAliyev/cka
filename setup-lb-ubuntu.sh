@@ -60,11 +60,12 @@ sudo cp keepalived.conf /etc/keepalived/
 scp keepalived-$CP2.conf "$CP2":/tmp/ && ssh "$CP2" "sudo cp /tmp/keepalived-$CP2.conf /etc/keepalived/keepalived.conf"
 scp keepalived-$CP3.conf "$CP3":/tmp/ && ssh "$CP3" "sudo cp /tmp/keepalived-$CP3.conf /etc/keepalived/keepalived.conf"
 
-# 7. Configure HAProxy with Dynamic IPs
-# Using @ as a delimiter for sed to avoid issues with potential slashes
-sed -i "s@server control1.*@server $CP1 $CP1_IP:6443 check@" haproxy.cfg
-sed -i "s@server control2.*@server $CP2 $CP2_IP:6443 check@" haproxy.cfg
-sed -i "s@server control3.*@server $CP3 $CP3_IP:6443 check@" haproxy.cfg
+# 7. Deploy HAProxy configs (Direct Copy)
+sudo cp haproxy.cfg /etc/haproxy/
+for node in $CP2 $CP3; do
+    scp haproxy.cfg "$node":/tmp/
+    ssh "$node" "sudo cp /tmp/haproxy.cfg /etc/haproxy/"
+done
 
 sudo cp haproxy.cfg /etc/haproxy/
 for node in $CP2 $CP3; do
