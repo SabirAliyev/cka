@@ -16,22 +16,28 @@ if ! which kubectl > /dev/null; then
 fi
 
 # 2. Extract IPs from /etc/hosts
-export CP1_IP=$(awk -v node="$CP1" '$2==node {print $1}' /etc/hosts | head -1)
-export CP2_IP=$(awk -v node="$CP2" '$2==node {print $1}' /etc/hosts | head -1)
-export CP3_IP=$(awk -v node="$CP3" '$2==node {print $1}' /etc/hosts | head -1)
+export CP1_IP=$(awk -v node="$CP1" '$2==node {print $1}' /etc/hosts | head -1 | grep -v 127)
+export CP2_IP=$(awk -v node="$CP2" '$2==node {print $1}' /etc/hosts | head -1 | grep -v 127)
+export CP3_IP=$(awk -v node="$CP3" '$2==node {print $1}' /etc/hosts | head -1 | grep -v 127)
 
 # Verify all IPs resolved
 for ip in "$CP1_IP" "$CP2_IP" "$CP3_IP"; do
-    if [ -z "$ip" ]; then echo "Error: IP for $CP1, $CP2, or $CP3 not found in /etc/hosts"; exit 1; fi
+    if [ -z "$ip" ]; then 
+        echo "Error: IP for $CP1, $CP2, or $CP3 not found in /etc/hosts"
+        exit 1
+    fi
 done
 
 # 3. Distribute SSH keys for automation
-ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa <<< n
-for node in $CP1 $CP2 $CP3; do ssh-copy-id "$node"; done[cite: 6]
+# Using -N "" for no passphrase and <<< y to overwrite if exists
+ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa <<< y
+for node in $CP1 $CP2 $CP3; do 
+    ssh-copy-id -o StrictHostKeyChecking=no "$node"
+done
 
 # 4. Install Software Stack
 for node in $CP1 $CP2 $CP3; do
-    ssh "$node" "sudo apt update && sudo apt install -y haproxy keepalived"[cite: 1]
+    ssh "$node" "sudo apt update && sudo apt install -y haproxy keepalived"
 done
 
 # 5. Configure keepalived Health Check
@@ -43,7 +49,6 @@ for node in $CP2 $CP3; do
 done
 
 # 6. Generate Node-Specific keepalived Configs
-# CP1 is Master; others are Slaves
 cp keepalived.conf keepalived-$CP2.conf
 cp keepalived.conf keepalived-$CP3.conf
 
@@ -56,9 +61,10 @@ scp keepalived-$CP2.conf "$CP2":/tmp/ && ssh "$CP2" "sudo cp /tmp/keepalived-$CP
 scp keepalived-$CP3.conf "$CP3":/tmp/ && ssh "$CP3" "sudo cp /tmp/keepalived-$CP3.conf /etc/keepalived/keepalived.conf"
 
 # 7. Configure HAProxy with Dynamic IPs
-sed -i "s/server control1.*/server $CP1 $CP1_IP:6443 check/" haproxy.cfg
-sed -i "s/server control2.*/server $CP2 $CP2_IP:6443 check/" haproxy.cfg
-sed -i "s/server control3.*/server $CP3 $CP3_IP:6443 check/" haproxy.cfg
+# Using @ as a delimiter for sed to avoid issues with potential slashes
+sed -i "s@server control1.*@server $CP1 $CP1_IP:6443 check@" haproxy.cfg
+sed -i "s@server control2.*@server $CP2 $CP2_IP:6443 check@" haproxy.cfg
+sed -i "s@server control3.*@server $CP3 $CP3_IP:6443 check@" haproxy.cfg
 
 sudo cp haproxy.cfg /etc/haproxy/
 for node in $CP2 $CP3; do
@@ -68,7 +74,7 @@ done
 
 # 8. Start Services
 for node in $CP1 $CP2 $CP3; do
-    ssh "$node" "sudo systemctl enable --now keepalived haproxy"[cite: 1]
+    ssh "$node" "sudo systemctl enable --now keepalived haproxy"
 done
 
 echo "LB Setup Complete. VIP: $VIP"
